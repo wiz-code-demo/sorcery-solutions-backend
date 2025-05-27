@@ -1,4 +1,4 @@
-FROM python:3.12.1-bullseye
+FROM registry.os.test.wiz.io/python3:latest
 
 WORKDIR /code
 
