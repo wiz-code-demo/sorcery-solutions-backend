@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   id-token: write
@@ -42,37 +45,54 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Configure AWS Credentials
+        if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to Container Registry
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ${{ vars.IMAGE_REGISTRY }}
 
-      - name: Build and Publish to Docker
-        id: build-and-push
-        if: github.event_name != 'pull_request'
+      - name: Login to Base Image Registry (if needed)
+        if: ${{ vars.BASE_IMAGE_REGISTRY != '' && vars.BASE_IMAGE_REGISTRY != null }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.BASE_IMAGE_REGISTRY }}
+          username: ${{ secrets.BASE_IMAGE_REGISTRY_USERNAME }}
+          password: ${{ secrets.BASE_IMAGE_REGISTRY_PASSWORD }}
+
+      - name: Build Docker Image
+        id: build-image
         uses: docker/build-push-action@v6
         with:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ matrix.image }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Pull image for scan
+        if: github.event_name == 'push'
+        run: docker pull ${{ matrix.image }}
+
       - name: Integrate CI data with Wiz
         run: |
-          docker pull ${{ matrix.image }}
+          IMAGE_TAG="${{ matrix.image }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            IMAGE_TAG="${{ steps.build-image.outputs.imageid }}"
+          fi
           if [[ ! -z "${{ vars.WIZ_ENV }}" && "${{ vars.WIZ_ENV }}" != "app" ]]; then export WIZ_ENV=${{ vars.WIZ_ENV }}; fi
           curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
           chmod +x wizcli
           ./wizcli auth --id "${{ secrets.WIZ_CLIENT_ID }}" --secret "${{ secrets.WIZ_CLIENT_SECRET }}"
-          ./wizcli docker scan --image ${{ matrix.image }} --dockerfile "${{ matrix.dockerfile }}/Dockerfile"
-          ./wizcli docker tag --image ${{ matrix.image }}
+          ./wizcli docker scan --image $IMAGE_TAG --dockerfile "${{ matrix.dockerfile }}/Dockerfile"
+          ./wizcli docker tag --image $IMAGE_TAG
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         continue-on-error: true
