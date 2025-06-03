@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+FROM registry.os.test.wiz.io/python3:latest
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 WORKDIR /code
 
