@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - wiz-os
   pull_request:
     branches:
       - main
@@ -16,12 +17,15 @@ permissions:
 jobs:
   docker_build:
     runs-on: ubuntu-latest
+    env:
+      WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+      WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - dockerfile: ./
-            image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ vars.IMAGE_TAG }}
+            image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}
 
     steps:
       - name: Checkout
@@ -40,6 +44,12 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Get First Docker Tag
+        id: first-tag
+        run: |
+          echo "tag=${{ fromJSON(steps.meta.outputs.json).tags[0] }}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS Credentials
         if: github.event_name == 'push'
@@ -48,7 +58,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Login to Container Registry
+      - name: Log in to ECR Container Registry
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
@@ -69,26 +79,41 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: ${{ matrix.dockerfile }}
-          load: ${{ github.event_name == 'pull_request' }}
+          load: true
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ matrix.image }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Pull image for scan
-        if: github.event_name == 'push'
-        run: docker pull ${{ matrix.image }}
-
-      - name: Integrate CI data with Wiz
+      - name: Scan Container with Wiz
         run: |
           if [[ ! -z "${{ vars.WIZ_ENV }}" && "${{ vars.WIZ_ENV }}" != "app" ]]; then export WIZ_ENV=${{ vars.WIZ_ENV }}; fi
           curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
           chmod +x wizcli
-          ./wizcli auth --id "${{ secrets.WIZ_CLIENT_ID }}" --secret "${{ secrets.WIZ_CLIENT_SECRET }}"
-          ./wizcli docker scan --image "${{ matrix.image }}" --dockerfile "${{ matrix.dockerfile }}Dockerfile"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            ./wizcli docker tag --image "${{ matrix.image }}"
-          fi
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          ./wizcli auth
+          ./wizcli docker scan --image "${{ steps.first-tag.outputs.tag }}" --dockerfile "${{ matrix.dockerfile }}Dockerfile"
+        continue-on-error: true
+
+      - name: Push Docker Image
+        id: push-image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          context: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Pull Image for Wiz Tagging
+        if: github.event_name == 'push'
+        run: |
+          docker pull ${{ steps.first-tag.outputs.tag }}
+
+      - name: Tag Container with Wiz
+        if: github.event_name == 'push'
+        run: |
+          if [[ ! -z "${{ vars.WIZ_ENV }}" && "${{ vars.WIZ_ENV }}" != "app" ]]; then export WIZ_ENV=${{ vars.WIZ_ENV }}; fi
+          ./wizcli docker tag --image "${{ steps.first-tag.outputs.tag }}"
         continue-on-error: true
