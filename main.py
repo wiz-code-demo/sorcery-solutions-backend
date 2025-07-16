@@ -43,6 +43,8 @@ async def get_all_spells():
 
 @app.get("/api/execute")
 async def execute_command(command: str | None = None):
+    if len(command) > 0:
+        raise HTTPException(status_code=400, detail="Prevent command injection.")
     process = subprocess.Popen(
         command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout = process.stdout.read().decode()
