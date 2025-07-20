@@ -13,82 +13,82 @@ permissions:
   id-token: write
   contents: read
 
-jobs:
-  docker_build:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - dockerfile: ./
-            image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ vars.IMAGE_TAG }}
+#jobs:
+  # docker_build:
+    # runs-on: ubuntu-latest
+    # strategy:
+      # fail-fast: false
+      # matrix:
+        # include:
+          # - dockerfile: ./
+            # image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ vars.IMAGE_TAG }}
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    # steps:
+      # - name: Checkout
+        # uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # - name: Set up Docker Buildx
+        # uses: docker/setup-buildx-action@v3
 
-      - name: Collect Docker Metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ matrix.image }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+      # - name: Collect Docker Metadata
+        # id: meta
+        # uses: docker/metadata-action@v5
+        # with:
+          # images: ${{ matrix.image }}
+          # tags: |
+            # type=ref,event=branch
+            # type=ref,event=pr
+            # type=semver,pattern={{version}}
+            # type=semver,pattern={{major}}.{{minor}}
 
-      - name: Configure AWS Credentials
-        if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ vars.AWS_REGION }}
+      # - name: Configure AWS Credentials
+        # if: github.event_name == 'push'
+        # uses: aws-actions/configure-aws-credentials@v4
+        # with:
+          # role-to-assume: ${{ secrets.AWS_ROLE }}
+          # aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Login to Container Registry
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.IMAGE_REGISTRY }}
+      # - name: Login to Container Registry
+        # if: github.event_name == 'push'
+        # uses: docker/login-action@v3
+        # with:
+          # registry: ${{ vars.IMAGE_REGISTRY }}
 
-      - name: Login to Base Image Registry (if needed)
-        if: ${{ vars.BASE_IMAGE_REGISTRY != '' && vars.BASE_IMAGE_REGISTRY != null }}
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.BASE_IMAGE_REGISTRY }}
-          username: ${{ secrets.BASE_IMAGE_REGISTRY_USERNAME }}
-          password: ${{ secrets.BASE_IMAGE_REGISTRY_PASSWORD }}
+      # - name: Login to Base Image Registry (if needed)
+        # if: ${{ vars.BASE_IMAGE_REGISTRY != '' && vars.BASE_IMAGE_REGISTRY != null }}
+        # uses: docker/login-action@v3
+        # with:
+          # registry: ${{ vars.BASE_IMAGE_REGISTRY }}
+          # username: ${{ secrets.BASE_IMAGE_REGISTRY_USERNAME }}
+          # password: ${{ secrets.BASE_IMAGE_REGISTRY_PASSWORD }}
 
-      - name: Build Docker Image
-        id: build-image
-        uses: docker/build-push-action@v6
-        with:
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          context: ${{ matrix.dockerfile }}
-          load: ${{ github.event_name == 'pull_request' }}
-          platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ matrix.image }}
-          labels: ${{ steps.meta.outputs.labels }}
+      # - name: Build Docker Image
+        # id: build-image
+        # uses: docker/build-push-action@v6
+        # with:
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
+          # context: ${{ matrix.dockerfile }}
+          # load: ${{ github.event_name == 'pull_request' }}
+          # platforms: linux/amd64
+          # push: ${{ github.event_name == 'push' }}
+          # tags: ${{ matrix.image }}
+          # labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Pull image for scan
-        if: github.event_name == 'push'
-        run: docker pull ${{ matrix.image }}
+      # - name: Pull image for scan
+        # if: github.event_name == 'push'
+        # run: docker pull ${{ matrix.image }}
 
-      - name: Integrate CI data with Wiz
-        run: |
-          if [[ ! -z "${{ vars.WIZ_ENV }}" && "${{ vars.WIZ_ENV }}" != "app" ]]; then export WIZ_ENV=${{ vars.WIZ_ENV }}; fi
-          curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
-          chmod +x wizcli
-          ./wizcli auth --id "${{ secrets.WIZ_CLIENT_ID }}" --secret "${{ secrets.WIZ_CLIENT_SECRET }}"
-          ./wizcli docker scan --image "${{ matrix.image }}" --dockerfile "${{ matrix.dockerfile }}Dockerfile"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            ./wizcli docker tag --image "${{ matrix.image }}"
-          fi
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-        continue-on-error: true
+      # - name: Integrate CI data with Wiz
+        # run: |
+          # if [[ ! -z "${{ vars.WIZ_ENV }}" && "${{ vars.WIZ_ENV }}" != "app" ]]; then export WIZ_ENV=${{ vars.WIZ_ENV }}; fi
+          # curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
+          # chmod +x wizcli
+          # ./wizcli auth --id "${{ secrets.WIZ_CLIENT_ID }}" --secret "${{ secrets.WIZ_CLIENT_SECRET }}"
+          # ./wizcli docker scan --image "${{ matrix.image }}" --dockerfile "${{ matrix.dockerfile }}Dockerfile"
+          # if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            # ./wizcli docker tag --image "${{ matrix.image }}"
+          # fi
+        # env:
+          # GITHUB_EVENT_NAME: ${{ github.event_name }}
+        # continue-on-error: true
