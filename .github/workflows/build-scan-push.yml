@@ -16,12 +16,12 @@ permissions:
 jobs:
    docker_build:
      runs-on: ubuntu-latest
-     strategy:
-       fail-fast: false
-       matrix:
-         include:
-          - dockerfile: ./
-             image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ vars.IMAGE_TAG }}
+#     strategy:
+ #      fail-fast: false
+ #      matrix:
+ #        include:
+ #         - dockerfile: ./
+ #            image: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ vars.IMAGE_TAG }}
 
      steps:
        - name: Checkout
