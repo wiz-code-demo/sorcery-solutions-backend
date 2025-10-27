@@ -1,4 +1,4 @@
-FROM registry.os.test.wiz.io/python3:latest
+FROM registry.os.test.wiz.io/python:3
 
 WORKDIR /code
 
